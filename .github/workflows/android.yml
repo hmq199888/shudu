@@ -19,10 +19,10 @@ jobs:
           cd sudoku-game
           npm install
 
-      - name: Add Android platform
+      - name: Build web and add Android platform
         run: |
           cd sudoku-game
-          npm run android
+          npm run android:build
 
       - name: Build APK
         uses: gradle/gradle-build-action@v2
