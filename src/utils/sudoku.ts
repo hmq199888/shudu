@@ -14,6 +14,12 @@ export interface GameState {
   isComplete: boolean;
   isWon: boolean;
   elapsedTime: number;
+  isPaused: boolean;
+}
+
+export interface CellPosition {
+  row: number;
+  col: number;
 }
 
 const EMPTY_BOARD: Board = Array(9).fill(null).map(() => Array(9).fill(null));
@@ -126,7 +132,7 @@ function createFullBoard(): Board {
   return board;
 }
 
-function removeNumbers(board: Board, solution: Board, count: number): Board {
+function removeNumbers(board: Board, count: number): Board {
   const puzzle = board.map(row => [...row]);
   const positions: [number, number][] = [];
 
@@ -166,13 +172,13 @@ export function generateSudoku(difficulty: Difficulty): { puzzle: Board; solutio
     hard: 55
   };
 
-  const puzzle = removeNumbers(fullBoard, solution, cellsToRemove[difficulty]);
+  const puzzle = removeNumbers(fullBoard, cellsToRemove[difficulty]);
 
   return { puzzle, solution };
 }
 
 export function checkValue(
-  board: Board,
+  _board: Board,
   solution: Board,
   row: number,
   col: number,
@@ -219,7 +225,8 @@ export function createEmptyGame(): GameState {
     hints: 3,
     isComplete: false,
     isWon: false,
-    elapsedTime: 0
+    elapsedTime: 0,
+    isPaused: false
   };
 }
 
@@ -240,4 +247,52 @@ export function getRelatedCells(row: number, col: number): Set<string> {
   }
 
   return related;
+}
+
+export function getCandidateNotes(board: Board, row: number, col: number): boolean[] {
+  const notes = Array(9).fill(true);
+  const value = board[row][col];
+
+  if (value !== null) {
+    return Array(9).fill(false);
+  }
+
+  for (let i = 0; i < 9; i++) {
+    const rowVal = board[row][i];
+    if (rowVal !== null) {
+      notes[rowVal - 1] = false;
+    }
+    const colVal = board[i][col];
+    if (colVal !== null) {
+      notes[colVal - 1] = false;
+    }
+  }
+
+  const blockRow = Math.floor(row / 3) * 3;
+  const blockCol = Math.floor(col / 3) * 3;
+  for (let r = blockRow; r < blockRow + 3; r++) {
+    for (let c = blockCol; c < blockCol + 3; c++) {
+      const cellVal = board[r][c];
+      if (cellVal !== null) {
+        notes[cellVal - 1] = false;
+      }
+    }
+  }
+
+  return notes;
+}
+
+export function getHint(board: Board, _solution: Board): CellPosition | null {
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (board[row][col] === null) {
+        return { row, col };
+      }
+    }
+  }
+  return null;
+}
+
+export function isFixedCell(board: Board, solution: Board, row: number, col: number): boolean {
+  return solution[row][col] !== null && board[row][col] === solution[row][col];
 }
