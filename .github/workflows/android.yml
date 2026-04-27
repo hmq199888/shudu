@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Capacitor APK
 
 on:
   workflow_dispatch:
@@ -6,32 +6,45 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v6.0.2
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6.4.0
+        uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
 
       - name: Install dependencies
         run: |
           cd sudoku-game
           npm install
 
-      - name: Build web and add Android platform
+      - name: Build web app
         run: |
           cd sudoku-game
-          npm run android:build
+          npm run build
 
-      - name: Build APK
-        uses: gradle/gradle-build-action@v2
-        with:
-          arguments: assembleDebug
-          build-root-directory: sudoku-game/android
+      - name: Add Android platform
+        run: |
+          cd sudoku-game
+          npx cap add android
+
+      - name: Sync web to Android
+        run: |
+          cd sudoku-game
+          npx cap sync android
+
+      - name: Build Android APK
+        run: |
+          cd sudoku-game/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Upload APK
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v4
         with:
-          name: apk
+          name: sudoku-apk
           path: sudoku-game/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 5
