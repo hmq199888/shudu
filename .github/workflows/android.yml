@@ -1,0 +1,37 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd sudoku-game
+          npm install
+
+      - name: Add Android platform
+        run: |
+          cd sudoku-game
+          npm run android
+
+      - name: Build APK
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: assembleDebug
+          build-root-directory: sudoku-game/android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: sudoku-game/android/app/build/outputs/apk/debug/*.apk
