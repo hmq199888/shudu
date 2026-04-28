@@ -1,428 +1,218 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  GameState,
-  Difficulty,
-  generateSudoku,
-  createEmptyGame,
-  findErrors,
-  isBoardComplete,
-  checkValue,
-  isFixedCell
-} from './utils/sudoku';
+import { useState } from 'react'
+import './index.css'
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
+const App = () => {
+  let board: number[] = [], solution: number[] = [], fixed: boolean[] = [];
+  let notes: Set<number>[] = [];
+  let wrongCells = new Set<number>();
+  let [selected, setSelected] = useState<number | null>(null);
+  let [noteMode, setNoteMode] = useState(false);
+  let [lives, setLives] = useState(3);
+  let [won, setWon] = useState(false);
+  let [screen, setScreen] = useState<'menu' | 'game' | 'result'>('menu');
+  let [boardState, setBoardState] = useState<number[]>([]);
+  let [notesState, setNotesState] = useState<Set<number>[]>([]);
+  let [wrongState, setWrongState] = useState<Set<number>>(new Set());
 
-const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  easy: '简单',
-  medium: '中等',
-  hard: '困难'
-};
+  const difficultyHoles: Record<number, number> = { 1: 35, 2: 45, 3: 55, 4: 60, 5: 65 };
 
-export default function App() {
-  const [game, setGame] = useState<GameState>(() => {
-    const { puzzle, solution } = generateSudoku('easy');
-    return {
-      ...createEmptyGame(),
-      board: puzzle,
-      solution
-    };
-  });
-
-  const [notesMode, setNotesMode] = useState(false);
-  const [showWinModal, setShowWinModal] = useState(false);
-  const [errors, setErrors] = useState<Set<string>>(new Set());
-  const [isPaused, setIsPaused] = useState(false);
-  const [highlightMode, setHighlightMode] = useState(false);
-
-  useEffect(() => {
-    if (isPaused || game.isWon || game.isComplete) return;
-
-    const timer = setInterval(() => {
-      setGame(prev => ({ ...prev, elapsedTime: prev.elapsedTime + 1 }));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isPaused, game.isWon, game.isComplete]);
-
-  useEffect(() => {
-    if (game.isWon) {
-      setShowWinModal(true);
+  function generateSolved(b: number[], sol: number[], idx: number): boolean {
+    if (idx === 81) { sol.push(...b); return true; }
+    const nums = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+    for (let n of nums) {
+      b[idx] = n;
+      if (isValid(b, idx)) {
+        if (generateSolved(b, sol, idx + 1)) return true;
+      }
+      b[idx] = 0;
     }
-  }, [game.isWon]);
+    return false;
+  }
 
-  const newGame = useCallback((difficulty: Difficulty) => {
-    const { puzzle, solution } = generateSudoku(difficulty);
-    setGame({
-      ...createEmptyGame(),
-      board: puzzle,
-      solution,
-      difficulty,
-      elapsedTime: 0
-    });
-    setErrors(new Set());
-    setShowWinModal(false);
-    setNotesMode(false);
-    setIsPaused(false);
-  }, []);
-
-  const togglePause = useCallback(() => {
-    setIsPaused(prev => !prev);
-  }, []);
-
-  const selectCell = useCallback((row: number, col: number) => {
-    setGame(prev => ({ ...prev, selectedCell: [row, col] }));
-  }, []);
-
-  const placeNumber = useCallback((num: number | null) => {
-    if (!game.selectedCell || game.isComplete || game.isWon || isPaused) return;
-
-    const [row, col] = game.selectedCell;
-
-    if (isFixedCell(game.board, game.solution, row, col)) {
-      return;
+  function isValid(b: number[], idx: number): boolean {
+    const row = Math.floor(idx / 9), col = idx % 9;
+    for (let i = 0; i < 9; i++) {
+      if (i !== col && b[row * 9 + i] === b[idx]) return false;
+      if (i !== row && b[i * 9 + col] === b[idx]) return false;
     }
-
-    const originalBoard = game.board;
-    const originalNotes = game.notes;
-
-    if (num === null) {
-      const newBoard = originalBoard.map(r => [...r]);
-      newBoard[row][col] = null;
-      const newNotes = originalNotes.map(layer => layer.map(r => [...r]));
-      newNotes[row][col] = Array(9).fill(false);
-
-      setGame(prev => ({
-        ...prev,
-        board: newBoard,
-        notes: newNotes
-      }));
-
-      setErrors(findErrors(newBoard, game.solution));
-      return;
+    const br = Math.floor(row / 3) * 3, bc = Math.floor(col / 3) * 3;
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      const ni = (br + i) * 9 + (bc + j);
+      if (ni !== idx && b[ni] === b[idx]) return false;
     }
+    return true;
+  }
 
-    if (notesMode) {
-      const newNotes = originalNotes.map(layer => layer.map(r => [...r]));
-      newNotes[row][col][num - 1] = !newNotes[row][col][num - 1];
-      setGame(prev => ({ ...prev, notes: newNotes }));
-    } else {
-      const newBoard = originalBoard.map(r => [...r]);
-      newBoard[row][col] = num;
+  function isNoteValid(b: number[], idx: number, n: number): boolean {
+    const row = Math.floor(idx / 9), col = idx % 9;
+    const br = Math.floor(row / 3) * 3, bc = Math.floor(col / 3) * 3;
+    for (let i = 0; i < 9; i++) {
+      if (b[row * 9 + i] === n) return false;
+      if (b[i * 9 + col] === n) return false;
+    }
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      if (b[(br + i) * 9 + (bc + j)] === n) return false;
+    }
+    return true;
+  }
 
-      const newNotes = originalNotes.map(layer => layer.map(r => [...r]));
-      newNotes[row][col] = Array(9).fill(false);
+  function getBoxIdx(idx: number): number {
+    const row = Math.floor(idx / 9), col = idx % 9;
+    return Math.floor(row / 3) * 3 + Math.floor(col / 3);
+  }
 
-      const isCorrect = checkValue(newBoard, game.solution, row, col, num);
+  function startGame(difficulty: number) {
+    board = Array(81).fill(0);
+    solution = [];
+    fixed = Array(81).fill(false);
+    notes = Array(81).fill(null).map(() => new Set());
+    wrongCells = new Set();
+    generateSolved(board, solution, 0);
+    const holes = difficultyHoles[difficulty] || 45;
+    const positions = [...Array(81).keys()].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < holes; i++) board[positions[i]] = 0;
+    for (let i = 0; i < 81; i++) fixed[i] = solution[i] !== 0 && board[i] === solution[i];
+    setSelected(null);
+    setNoteMode(false);
+    setLives(3);
+    setWon(false);
+    setBoardState([...board]);
+    setNotesState(notes.map(n => new Set(n)));
+    setWrongState(new Set());
+    setScreen('game');
+  }
 
-      if (!isCorrect) {
-        setGame(prev => ({
-          ...prev,
-          board: newBoard,
-          notes: newNotes,
-          mistakes: prev.mistakes + 1
-        }));
-        setErrors(prev => {
-          const newErrors = new Set(prev);
-          newErrors.add(`${row}-${col}`);
-          return newErrors;
-        });
+  function handleInput(n: number) {
+    if (selected === null || fixed[selected]) return;
+
+    if (noteMode) {
+      if (board[selected] !== 0) return;
+      if (notes[selected].has(n)) {
+        notes[selected].delete(n);
       } else {
-        setGame(prev => ({
-          ...prev,
-          board: newBoard,
-          notes: newNotes
-        }));
+        if (!isNoteValid(board, selected, n)) return;
+        notes[selected].add(n);
+      }
+      setNotesState(notes.map(ns => new Set(ns)));
+      return;
+    }
 
-        setErrors(findErrors(newBoard, game.solution));
-
-        if (isBoardComplete(newBoard)) {
-          setGame(prev => ({ ...prev, isWon: true, isComplete: true }));
-        }
+    board[selected] = n;
+    if (n !== 0) {
+      notes[selected].clear();
+      if (n !== solution[selected]) {
+        wrongCells.add(selected);
+        setLives(l => {
+          const nl = l - 1;
+          if (nl <= 0) {
+            setTimeout(() => setScreen('result'), 500);
+          }
+          return nl;
+        });
+        document.body.classList.add('shake');
+        setTimeout(() => document.body.classList.remove('shake'), 400);
+      } else {
+        wrongCells.delete(selected);
       }
     }
-  }, [game.selectedCell, game.board, game.notes, game.solution, notesMode, isPaused]);
+    setBoardState([...board]);
+    setWrongState(new Set(wrongCells));
+    setNotesState(notes.map(ns => new Set(ns)));
 
-  const useHint = useCallback(() => {
-    if (game.hints <= 0 || game.isComplete || game.isWon || isPaused) return;
-
-    const emptyCells: [number, number][] = [];
-    for (let r = 0; r < 9; r++) {
-      for (let c = 0; c < 9; c++) {
-        if (game.board[r][c] === null) {
-          emptyCells.push([r, c]);
-        }
-      }
+    if (board.every((v, i) => v === solution[i])) {
+      setWon(true);
+      setTimeout(() => setScreen('result'), 500);
     }
+  }
 
-    if (emptyCells.length === 0) return;
+  function selectCell(idx: number) {
+    setSelected(idx);
+  }
 
-    const [row, col] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-    const solutionValue = game.solution[row][col];
+  const selRow = selected !== null ? Math.floor(selected / 9) : -1;
+  const selCol = selected !== null ? selected % 9 : -1;
+  const selBox = selected !== null ? getBoxIdx(selected) : -1;
+  const selNum = selected !== null ? boardState[selected] : 0;
 
-    const newBoard = game.board.map(r => [...r]);
-    newBoard[row][col] = solutionValue;
-
-    const newNotes = game.notes.map(layer => layer.map(r => [...r]));
-    newNotes[row][col] = Array(9).fill(false);
-
-    setGame(prev => ({
-      ...prev,
-      board: newBoard,
-      notes: newNotes,
-      hints: prev.hints - 1,
-      selectedCell: [row, col]
-    }));
-
-    setErrors(findErrors(newBoard, game.solution));
-
-    if (isBoardComplete(newBoard)) {
-      setGame(prev => ({ ...prev, isWon: true, isComplete: true }));
-    }
-  }, [game.hints, game.board, game.notes, game.solution, game.isComplete, game.isWon, isPaused]);
-
-  const validateBoard = useCallback(() => {
-    const newErrors = findErrors(game.board, game.solution);
-    setErrors(newErrors);
-  }, [game.board, game.solution]);
-
-  const clearBoard = useCallback(() => {
-    setGame(prev => ({
-      ...prev,
-      board: prev.board.map((row, rowIdx) =>
-        row.map((_, colIdx) => {
-          const isFixed = isFixedCell(prev.board, prev.solution, rowIdx, colIdx);
-          return isFixed ? prev.solution[rowIdx][colIdx] : null;
-        })
-      ),
-      notes: prev.notes.map(layer => layer.map(() => Array(9).fill(false)))
-    }));
-    setErrors(new Set());
-  }, []);
-
-  const eraseCell = useCallback(() => {
-    if (!game.selectedCell || game.isComplete || game.isWon || isPaused) return;
-
-    const [row, col] = game.selectedCell;
-    if (isFixedCell(game.board, game.solution, row, col)) return;
-
-    const newBoard = game.board.map(r => [...r]);
-    newBoard[row][col] = null;
-
-    const newNotes = game.notes.map(layer => layer.map(r => [...r]));
-    newNotes[row][col] = Array(9).fill(false);
-
-    setGame(prev => ({
-      ...prev,
-      board: newBoard,
-      notes: newNotes
-    }));
-
-    setErrors(findErrors(newBoard, game.solution));
-  }, [game.selectedCell, game.board, game.notes, game.solution, game.isComplete, game.isWon, isPaused]);
-
-  const getCellDisplay = (row: number, col: number) => {
-    const value = game.board[row][col];
-    const notes = game.notes[row][col];
-
-    if (value !== null) {
-      return <span className="cell-value">{value}</span>;
-    }
-
-    const activeNotes = notes.map((active, idx) => active ? idx + 1 : null).filter(Boolean);
-    if (activeNotes.length > 0) {
-      return (
-        <div className="notes-grid">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
-            <span key={n} className={notes[n - 1] ? 'note-active' : 'note-empty'}>{notes[n - 1] ? n : ''}</span>
+  if (screen === 'menu') {
+    return (
+      <div className="screen active">
+        <h1>数独游戏</h1>
+        <div className="difficulty-grid">
+          {[1,2,3,4,5].map(d => (
+            <button key={d} className={`diff-btn ${['easy','medium','hard','expert','demon'][d-1]}`} onClick={() => startGame(d)}>
+              {['简单','中等','困难','专家','魔鬼'][d-1]}
+              <div className="diff-desc">{difficultyHoles[d]}个空格</div>
+            </button>
           ))}
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    return null;
-  };
-
-  const getCellClasses = (row: number, col: number) => {
-    const classes = ['cell'];
-    const isFixed = isFixedCell(game.board, game.solution, row, col);
-
-    if (isFixed) classes.push('fixed');
-
-    if (game.selectedCell) {
-      const [selRow, selCol] = game.selectedCell;
-      const isSelected = selRow === row && selCol === col;
-
-      if (isSelected) {
-        classes.push('selected');
-      } else if (row === selRow || col === selCol) {
-        classes.push('related');
-      } else {
-        const blockRow = Math.floor(selRow / 3) * 3;
-        const blockCol = Math.floor(selCol / 3) * 3;
-        if (row >= blockRow && row < blockRow + 3 && col >= blockCol && col < blockCol + 3) {
-          classes.push('related');
-        }
-      }
-
-      if (highlightMode && game.board[selRow][selCol] !== null) {
-        if (game.board[row][col] === game.board[selRow][selCol] && !isSelected) {
-          classes.push('highlight');
-        }
-      }
-
-      if (errors.has(`${row}-${col}`)) {
-        classes.push('error');
-      }
-    }
-
-    return classes.join(' ');
-  };
-
-  const selectedValue = game.selectedCell ? game.board[game.selectedCell[0]][game.selectedCell[1]] : null;
+  if (screen === 'result') {
+    return (
+      <div className="screen active">
+        <div className="result-icon">{won ? '🎉' : '💔'}</div>
+        <div className="result-text" style={{ color: won ? '#4ecca3' : '#e74c3c' }}>
+          {won ? '恭喜通关！' : '游戏结束'}
+        </div>
+        <button className="btn btn-back" onClick={() => setScreen('menu')}>返回选难度</button>
+      </div>
+    );
+  }
 
   return (
-    <div className="app-container">
-      <header className="header">
-        <h1>数独</h1>
-        <p>挑战智慧，享受乐趣</p>
-      </header>
-
-      <div className="game-info">
-        <div className="info-item">
-          <span className="info-label">时间</span>
-          <span className="info-value">{formatTime(game.elapsedTime)}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">难度</span>
-          <span className="info-value">{DIFFICULTY_LABELS[game.difficulty]}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">提示</span>
-          <span className="info-value">{game.hints}</span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">错误</span>
-          <span className="info-value" style={{ color: game.mistakes > 0 ? 'var(--error)' : 'inherit' }}>
-            {game.mistakes}
-          </span>
-        </div>
-      </div>
-
-      <div className="difficulty-selector">
-        {(['easy', 'medium', 'hard'] as Difficulty[]).map(diff => (
-          <button
-            key={diff}
-            className={`difficulty-btn ${game.difficulty === diff ? 'active' : ''}`}
-            onClick={() => newGame(diff)}
-          >
-            {DIFFICULTY_LABELS[diff]}
+    <div className="screen active">
+      <button className="btn btn-back" onClick={() => setScreen('menu')}>← 返回</button>
+      <div className="controls">
+        {[1,2,3,4,5].map(d => (
+          <button key={d} className={`btn btn-${['easy','medium','hard','expert','demon'][d-1]}`} onClick={() => startGame(d)}>
+            {['简单','中等','困难','专家','魔鬼'][d-1]}
           </button>
         ))}
       </div>
-
-      <div className="controls-row">
-        <div className={`toggle-control ${notesMode ? 'active' : ''}`} onClick={() => setNotesMode(!notesMode)}>
-          <div className="toggle-icon">✏️</div>
-          <span>笔记</span>
-        </div>
-        <div className={`toggle-control ${highlightMode ? 'active' : ''}`} onClick={() => setHighlightMode(!highlightMode)}>
-          <div className="toggle-icon">🔍</div>
-          <span>高亮</span>
-        </div>
-        <div className="toggle-control" onClick={togglePause}>
-          <div className="toggle-icon">{isPaused ? '▶️' : '⏸️'}</div>
-          <span>{isPaused ? '继续' : '暂停'}</span>
-        </div>
-      </div>
-
-      <div className="board-wrapper">
-        {isPaused && (
-          <div className="pause-overlay">
-            <div className="pause-content">
-              <h2>已暂停</h2>
-              <button onClick={togglePause}>继续游戏</button>
+      <div className="sudoku-grid">
+        {boardState.map((v, i) => {
+          const row = Math.floor(i / 9), col = i % 9, box = getBoxIdx(i);
+          let cls = 'cell';
+          if (fixed[i]) cls += ' fixed';
+          if (selected === i) cls += ' selected';
+          if (wrongState.has(i)) cls += ' error';
+          if (selected !== null) {
+            if (row === selRow && i !== selected) cls += ' same-row';
+            if (col === selCol && i !== selected) cls += ' same-col';
+            if (box === selBox && i !== selected) cls += ' same-box';
+            if (boardState[i] === selNum && selNum !== 0 && i !== selected) cls += ' same-number';
+          }
+          return (
+            <div key={i} className={cls} onClick={() => selectCell(i)}>
+              {v !== 0 && <div className="cell-content">{v}</div>}
+              {v === 0 && notesState[i]?.size > 0 && (
+                <div className="notes-grid">
+                  {[1,2,3,4,5,6,7,8,9].map(n => (
+                    <span key={n} className={`note-num ${!isNoteValid(boardState, i, n) && notesState[i]?.has(n) ? 'disabled' : ''} ${selNum !== 0 && notesState[i]?.has(selNum) && n === selNum ? 'highlight' : ''}`}>
+                      {notesState[i]?.has(n) ? n : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
-        <div className="sudoku-board">
-          {game.board.map((row, rowIdx) =>
-            row.map((_, colIdx) => (
-              <div
-                key={`${rowIdx}-${colIdx}`}
-                className={getCellClasses(rowIdx, colIdx)}
-                onClick={() => selectCell(rowIdx, colIdx)}
-              >
-                {getCellDisplay(rowIdx, colIdx)}
-              </div>
-            ))
-          )}
+          );
+        })}
+      </div>
+      <div className="bottom-controls">
+        <button className={`btn btn-note ${noteMode ? 'active' : ''}`} onClick={() => setNoteMode(!noteMode)}>📝 备注</button>
+        <div className="lives">
+          {[0,1,2].map(i => <span key={i} className={`life ${i >= lives ? 'lost' : ''}`}>❤️</span>)}
         </div>
       </div>
-
-      <div className="number-pad">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
-          <button
-            key={num}
-            className={`number-btn ${selectedValue === num ? 'highlighted' : ''}`}
-            onClick={() => placeNumber(num)}
-          >
-            {num}
-          </button>
-        ))}
-        <button className="number-btn eraser" onClick={eraseCell}>
-          ✕
-        </button>
+      <div className="numpad">
+        {[1,2,3,4,5,6,7,8,9].map(n => <button key={n} onClick={() => handleInput(n)}>{n}</button>)}
+        <button onClick={() => handleInput(0)}>×</button>
       </div>
-
-      <div className="action-buttons">
-        <button className="action-btn secondary" onClick={validateBoard}>
-          验证
-        </button>
-        <button className="action-btn secondary" onClick={clearBoard}>
-          重置
-        </button>
-        <button className="action-btn primary" onClick={useHint} disabled={game.hints <= 0 || isPaused}>
-          提示 ({game.hints})
-        </button>
-        <button className="action-btn success" onClick={() => newGame(game.difficulty)}>
-          新游戏
-        </button>
-      </div>
-
-      {showWinModal && (
-        <div className="win-modal" onClick={() => setShowWinModal(false)}>
-          <div className="win-modal-content" onClick={e => e.stopPropagation()}>
-            <div className="win-icon">🎉</div>
-            <h2>恭喜通关!</h2>
-            <p>你完成了 {DIFFICULTY_LABELS[game.difficulty]} 难度的数独</p>
-            <p className="win-time">用时: {formatTime(game.elapsedTime)}</p>
-            <div className="win-stats">
-              <div className="stat">
-                <span className="stat-label">错误次数</span>
-                <span className="stat-value">{game.mistakes}</span>
-              </div>
-              <div className="stat">
-                <span className="stat-label">剩余提示</span>
-                <span className="stat-value">{game.hints}</span>
-              </div>
-            </div>
-            <button
-              className="action-btn success"
-              style={{ marginTop: '20px', width: '100%' }}
-              onClick={() => newGame(game.difficulty)}
-            >
-              再玩一局
-            </button>
-          </div>
-        </div>
-      )}
-
-      <footer className="footer">
-        <p>点击格子后点击数字填入 · 笔记模式可标注候选数字</p>
-      </footer>
     </div>
   );
-}
+};
+
+export default App;
